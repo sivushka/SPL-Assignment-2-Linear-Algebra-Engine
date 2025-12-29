@@ -18,14 +18,14 @@ public class TiredExecutor {
             double fatigueFactor = 0.5 + Math.random();
             workers[i] = new TiredThread(i, fatigueFactor);
             workers[i].start(); 
-            idleMinHeap.add(workers[i]); 
+            idleMinHeap.put(workers[i]); 
         }
     }
 
     public void submit(Runnable task) {
         // TODO
         try {
-            TiredThread worker = idleMinHeap.take();
+            TiredThread worker = idleMinHeap.take(); 
             inFlight.incrementAndGet();
             
             Runnable wrappedTask = new Runnable() {
@@ -35,19 +35,21 @@ public class TiredExecutor {
                         task.run(); 
                     } 
                     finally {
-                        synchronized (inFlight) {
+                        idleMinHeap.put(worker);
+                        synchronized (this) {
                             if (inFlight.decrementAndGet() == 0) {
                                 inFlight.notifyAll(); 
                             } 
                         }
-                        idleMinHeap.add(worker);
+                        
                     }
                 }
             };
                 worker.newTask(wrappedTask);
         }
         catch(InterruptedException e) {
-            Thread.currentThread().interrupt();
+            throw new RuntimeException("TiredExecutor submit catch" + e);
+            //Thread.currentThread().interrupt();
         }
 
     }
@@ -56,31 +58,36 @@ public class TiredExecutor {
         // TODO: submit tasks one by one and wait until all finish
         for (Runnable t : tasks) submit(t);
 
-        synchronized (inFlight) {
+        synchronized (this) {
             while (inFlight.get() > 0) {
                 try {
-                    inFlight.wait(); 
+                    wait(); 
                 } 
                 catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("TiredExecutor submitAll catch" + e);
                 }
             }
         }
     }
-    
+
     public void shutdown() throws InterruptedException {
         // TODO
         for (TiredThread w : workers) w.shutdown();
-        for (TiredThread w : workers) w.join();
+        //for (TiredThread w : workers) w.join();
     }
 
     public synchronized String getWorkerReport() {
         // TODO: return readable statistics for each worker
-        StringBuilder report = new StringBuilder("--- Worker Stats ---\n");
-        for (TiredThread w : workers) {
-            report.append(String.format("ID: %d | Fatigue: %.2f | Used: %d ns | Idle: %d ns\n",
-                    w.getWorkerId(), w.getFatigue(), w.getTimeUsed(), w.getTimeIdle()));
+        synchronized (inFlight) { 
+            StringBuilder report = new StringBuilder("--- Worker Stats ---\n");
+            for (TiredThread w : workers) {
+                report.append(String.format("ID: %d | Fatigue: %.2f | Used: %d ns | Idle: %d ns\n",
+                        w.getWorkerId(), w.getFatigue(), w.getTimeUsed(), w.getTimeIdle()));
+            }
+            return report.toString();
         }
-        return report.toString();
     }
+
+    public TiredThread[] getWorkers() {return workers; }
+    public int getInFlights() {return inFlight.get(); }
 }

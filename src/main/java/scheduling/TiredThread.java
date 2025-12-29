@@ -57,7 +57,8 @@ public class TiredThread extends Thread implements Comparable<TiredThread> {
      */
     public void newTask(Runnable task) {
        // TODO
-       if (!handoff.offer(task)) {
+       boolean isBusy = handoff.offer(task);
+       if (!isBusy) {
             throw new IllegalStateException("Worker " + id + " is already busy!");
         }
     }
@@ -68,8 +69,13 @@ public class TiredThread extends Thread implements Comparable<TiredThread> {
      */
     public void shutdown() {
        // TODO
-       alive.set(false);
-       handoff.offer(POISON_PILL);
+       try {
+        alive.set(false);
+        handoff.put(POISON_PILL);
+       }
+       catch (InterruptedException e) {
+        throw new RuntimeException("TiredThread shutdown catch" + e);
+       }
     }
 
     @Override
@@ -81,7 +87,7 @@ public class TiredThread extends Thread implements Comparable<TiredThread> {
                 idleStartTime.set(System.nanoTime());
                 task = handoff.take(); 
                 if (task != POISON_PILL) {
-                    timeIdle.addAndGet(System.nanoTime() - idleStartTime.get());
+                    timeIdle.addAndGet(System.nanoTime() - this.idleStartTime.get());
 
                     busy.set(true);
                     long startTime = System.nanoTime();
@@ -97,8 +103,10 @@ public class TiredThread extends Thread implements Comparable<TiredThread> {
                 }
             } 
             catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                task = POISON_PILL; 
+                break;
+                //alive.set(false);
+                //Thread.currentThread().interrupt();
+                //task = POISON_PILL; 
             }
         }
     }
@@ -106,6 +114,7 @@ public class TiredThread extends Thread implements Comparable<TiredThread> {
     @Override
     public int compareTo(TiredThread o) {
         // TODO
-        return Double.compare(this.getFatigue(), o.getFatigue());
+        Double originFatigue = this.getFatigue();
+        return originFatigue.compareTo(o.getFatigue());
     }
 }
